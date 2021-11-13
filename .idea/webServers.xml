@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="5379b3b8-2146-4049-9ddd-ae01c3633560" name="XueYuan_ZWT" url="http:///">
+        <fileTransfer rootFolder="/home/zhengwentao_8208180306/yang/IDEAS" accessType="SFTP" host="1.14.157.234" port="40000" sshConfigId="db66a387-833e-4279-b6c6-1a91053bc683" sshConfig="XueYuan_ZWT">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="41fc7140-b8e3-4f23-a460-c31a7fe53d1c" name="ZN3090" url="http:///">
+        <fileTransfer rootFolder="/home/mzp/IDEAS" accessType="SFTP" host="1.14.157.234" port="35000" sshConfigId="21f7039d-b222-4292-9295-8a258ae78c09" sshConfig="ZN3090">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="3191fbd3-5d96-42b4-a120-c819d59cd4f8" name="a208_IDEAS" url="http:///">
+        <fileTransfer rootFolder="/home/a208/MZP/IDEAS" accessType="SFTP" host="1.14.157.234" port="30001" sshConfigId="716b5162-0584-47a6-98a7-23bc989cf211" sshConfig="a208_Baseline" />
+      </webServer>
+      <webServer id="31c34c32-fb7b-4a1d-855d-240fc190abad" name="2080">
+        <fileTransfer rootFolder="D:/" accessType="SFTP" host="1.14.157.234" port="36000" sshConfigId="831e00f4-0134-4966-86e0-7a4cdbacdb5e" sshConfig="2080">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
