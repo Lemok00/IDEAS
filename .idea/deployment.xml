@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData">
+  <component name="PublishConfigData" autoUpload="Always" serverName="mzp@47.101.59.238:6001">
     <serverData>
-      <paths name="2080">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
       <paths name="XueYuan_ZWT">
         <serverdata>
           <mappings>
@@ -30,13 +23,14 @@
           </mappings>
         </serverdata>
       </paths>
-      <paths name="a208_titan_total">
+      <paths name="mzp@47.101.59.238:6001">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/mzp/IDEAS" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
     </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

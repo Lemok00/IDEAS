@@ -2,11 +2,8 @@
 <project version="4">
   <component name="SshConfigs">
     <configs>
-      <sshConfig authType="PASSWORD" host="1.14.157.234" id="831e00f4-0134-4966-86e0-7a4cdbacdb5e" port="36000" customName="2080" nameFormat="CUSTOM" username="mjx">
-        <option name="customName" value="2080" />
-      </sshConfig>
-      <sshConfig authType="PASSWORD" host="1.14.157.234" id="8e8e0923-387b-4d78-9e69-7ed0faa0afc8" port="32000" customName="a220" nameFormat="CUSTOM" username="ding">
-        <option name="customName" value="a220" />
+      <sshConfig authType="PASSWORD" host="47.101.59.238" id="21f7039d-b222-4292-9295-8a258ae78c09" port="6001" customName="3090" nameFormat="CUSTOM" username="mzp">
+        <option name="customName" value="3090" />
       </sshConfig>
     </configs>
   </component>
