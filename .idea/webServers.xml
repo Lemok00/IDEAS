@@ -17,7 +17,7 @@
         </fileTransfer>
       </webServer>
       <webServer id="3191fbd3-5d96-42b4-a120-c819d59cd4f8" name="a208_IDEAS" url="http:///">
-        <fileTransfer rootFolder="/home/a208/MZP/IDEAS" accessType="SFTP" host="1.14.157.234" port="30001" sshConfigId="716b5162-0584-47a6-98a7-23bc989cf211" sshConfig="a208">
+        <fileTransfer rootFolder="/home/a208/MZP/IDEAS" accessType="SFTP" host="219.223.207.133" port="22" sshConfigId="2dfdfcce-d4cd-4644-8505-80e5af33af90" sshConfig="a208_XN">
           <advancedOptions>
             <advancedOptions keepAliveTimeout="0" />
           </advancedOptions>

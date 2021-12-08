@@ -90,7 +90,7 @@ if __name__ == "__main__":
                   f'Denoised Loss:{torch.mean(torch.abs(image - denoised_image)) / 2 * 255}; '
                   f'Noised Loss: {torch.mean(torch.abs(image - noised_image)) / 2 * 255}')
 
-        if i % 1000 == 0:
+        if i % 5000 == 0:
             utils.save_image([image[0], noised_image[0], denoised_image[0],
                               torch.zeros(size=image[0].shape).to(device),
                               torch.abs(image[0] - noised_image[0]) * 2 - 1,

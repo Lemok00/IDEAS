@@ -5,6 +5,9 @@
       <sshConfig authType="PASSWORD" host="47.101.59.238" id="21f7039d-b222-4292-9295-8a258ae78c09" port="6001" customName="3090" nameFormat="CUSTOM" username="mzp">
         <option name="customName" value="3090" />
       </sshConfig>
+      <sshConfig authType="PASSWORD" host="219.223.196.56" id="fb0d5262-7e44-40b0-a82a-6f054a2c2ff4" port="22" customName="a208_2_XN" nameFormat="CUSTOM" username="a208">
+        <option name="customName" value="a208_2_XN" />
+      </sshConfig>
     </configs>
   </component>
 </project>

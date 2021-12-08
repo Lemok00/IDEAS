@@ -61,8 +61,6 @@ class OfficalLMDBDataset(Dataset):
         with self.env.begin(write=False) as txn:
             cursor = txn.cursor()
             for idx,(key, _) in enumerate(cursor):
-                if idx>=100000:
-                    break
                 self.keys.append(key)
 
         self.length = len(self.keys)
