@@ -1,7 +1,6 @@
-import argparse
 import random
 import os
-
+import argparse
 import torch
 from torch import nn, autograd, optim
 from torch.nn import functional as F
@@ -515,12 +514,12 @@ if __name__ == "__main__":
 
     parser.add_argument("--dataset_path", type=str, required=True)
     parser.add_argument("--dataset_type", choices=['offical_lmdb', 'resized_lmdb', 'normal'])
-    parser.add_argument("--num_iters", type=int, default=200000)
+    parser.add_argument("--num_iters", type=int, default=100000)
     parser.add_argument("--batch_size", type=int, default=1)
 
     parser.add_argument("--log_every", type=int, default=200)
-    parser.add_argument("--show_every", type=int, default=1000)
-    parser.add_argument("--save_every", type=int, default=50000)
+    parser.add_argument("--show_every", type=int, default=5000)
+    parser.add_argument("--save_every", type=int, default=100000)
 
     args = parser.parse_args()
 
