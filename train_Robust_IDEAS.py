@@ -330,7 +330,7 @@ def train(
         denoised_mess_extract_loss = F.l1_loss(denoised_recovered_tensor_2, secret_tensor) + \
                                      F.l1_loss(denoised_recovered_tensor_3, secret_tensor)
 
-        Ex_rec_loss = (original_mess_extract_loss + noised_mess_extract_loss + denoised_mess_extract_loss) / 6
+        Ex_rec_loss = (original_mess_extract_loss + noised_mess_extract_loss + denoised_mess_extract_loss)
 
         # Record Loss
         loss_dict["G_rec_loss"] = G_rec_loss
@@ -518,7 +518,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1)
 
     parser.add_argument("--log_every", type=int, default=200)
-    parser.add_argument("--show_every", type=int, default=5000)
+    parser.add_argument("--show_every", type=int, default=1000)
     parser.add_argument("--save_every", type=int, default=100000)
 
     args = parser.parse_args()
