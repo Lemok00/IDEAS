@@ -53,6 +53,15 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
+def salt_and_pepper(input, prob):
+    noise_tensor = torch.rand_like(input)
+    salt = torch.max(input)
+    pepper = torch.min(input)
+    input[noise_tensor < prob / 2] = salt
+    input[noise_tensor > 1 - prob / 2] = pepper
+    return input
+
+
 if __name__ == "__main__":
     device = "cuda"
     parser = argparse.ArgumentParser()
@@ -188,16 +197,8 @@ if __name__ == "__main__":
 
             if args.PepperNoise == True:
                 for p in PepperNoise_Ps:
-                    noise_mask = np.random.choice((0, 1, 2), size=(batch_size, 3, 256, 256), p=[(1 - p), p / 2, p / 2])
                     noised_image = fake_image.clone()
-                    for j in range(batch_size):
-                        for c in range(3):
-                            for h in range(256):
-                                for w in range(256):
-                                    if noise_mask[j, c, h, w] == 1:
-                                        noised_image[j, c, h, w] = 0
-                                    elif noise_mask[j, c, h, w] == 2:
-                                        noised_image[j, c, h, w] = 1
+                    noised_image = salt_and_pepper(noised_image, p)
                     noised_image = (noised_image.clamp(0, 1) * 255).int()
 
                     noised_image = (noised_image.float() / 255 * 2 - 1)  # -> (-1,1)
@@ -341,14 +342,14 @@ if __name__ == "__main__":
     Acc_list = []
 
     Acc = 1 - np.mean(np.hstack(Normal_BER))
-    print(f'\n {args.exp_name}')
+    print(f'\n{args.exp_name} Sigma={args.sigma} Delta={args.delta}')
     print(f'Acc w/o attack: {Acc}')
     AttName_list.append('w/o Att.')
     Acc_list.append(Acc)
 
     if args.GaussianNoise:
         for sigma in GaussianNoise_Sigmas:
-            print(f'Gaussian Noise Sigma={args.sigma} Sigma={sigma}')
+            print(f'Gaussian Noise Sigma={sigma}')
             Acc = 1 - np.mean(np.hstack(GaussianNoise_BER[f'sigma={sigma}']))
             print(f"ACC: {Acc}")
             AttName_list.append(f'GN sig.={sigma}')
@@ -356,7 +357,7 @@ if __name__ == "__main__":
 
     if args.PepperNoise:
         for p in PepperNoise_Ps:
-            print(f'Pepper Noise Sigma={args.sigma} P={p}')
+            print(f'Pepper Noise P={p}')
             Acc = 1 - np.mean(np.hstack(PepperNoise_BER[f'p={p}']))
             print(f"ACC: {Acc}")
             AttName_list.append(f'PN p={p}')
@@ -364,7 +365,7 @@ if __name__ == "__main__":
 
     if args.JPEG:
         for quality in JPEG_Qualitys:
-            print(f'JPEG Compression Sigma={args.sigma} Quality={quality}')
+            print(f'JPEG Compression Quality={quality}')
             Acc = 1 - np.mean(np.hstack(JPEG_BER[f'quality={quality}']))
             print(f"ACC: {Acc}")
             AttName_list.append(f'JC qua.={quality}')
@@ -372,7 +373,7 @@ if __name__ == "__main__":
 
     if args.JPEG2000:
         for quality in JPEG2000_Qualitys:
-            print(f'JPEG2000 Compression Sigma={args.sigma} Quality={quality}')
+            print(f'JPEG2000 Compression Quality={quality}')
             Acc = 1 - np.mean(np.hstack(JPEG2000_BER[f'quality={quality}']))
             print(f"ACC: {Acc}")
             AttName_list.append(f'J2C qua.={quality}')
@@ -380,7 +381,7 @@ if __name__ == "__main__":
 
     if args.GaussianBlur:
         for ks in GaussianBlur_KSs:
-            print(f'Gaussian Blur Sigma={args.sigma} KS={ks}')
+            print(f'Gaussian Blur KS={ks}')
             Acc = 1 - np.mean(np.hstack(GaussianBlur_BER[f'ks={ks}']))
             print(f"ACC: {Acc}")
             AttName_list.append(f'GB K.S.={ks}')
@@ -388,7 +389,7 @@ if __name__ == "__main__":
 
     if args.MedianBlur:
         for ks in MedianBlur_KSs:
-            print(f'Median Blur Sigma={args.sigma} KS={ks}')
+            print(f'Median Blur KS={ks}')
             Acc = 1 - np.mean(np.hstack(MedianBlur_BER[f'ks={ks}']))
             print(f"ACC: {Acc}")
             AttName_list.append(f'MB K.S.={ks}')
