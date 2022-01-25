@@ -1,8 +1,6 @@
-import argparse
 import random
 import os
-import numpy as np
-
+import argparse
 import torch
 from torch import nn, autograd, optim
 from torch.nn import functional as F
@@ -13,7 +11,7 @@ import time
 from mytime import time_change
 
 from IDEAS_models import Encoder, Generator, StructureGenerator, Discriminator, CooccurDiscriminator, \
-    DistributionDiscriminator, Extractor
+    DistributionDiscriminator, Extractor, DenoisingAutoencoder
 from dataset import set_dataset
 
 
@@ -143,8 +141,8 @@ def train(
         generator_ema,
         stru_generator_ema,
         extractor_ema,
-        device,
-        exp_name
+        dae,
+        device
 ):
     loader = sample_data(loader)
 
@@ -154,9 +152,7 @@ def train(
 
     start_time = time.time()
 
-    iter_training_times = []
-
-    for idx in range(1, args.num_iters + 1):
+    for idx in range(1, args.num_iters+1):
         iter_idx = idx + args.start_iter
 
         if iter_idx > args.num_iters:
@@ -170,6 +166,7 @@ def train(
         requires_grad(generator, False)
         requires_grad(stru_generator, False)
         requires_grad(extractor, False)
+        requires_grad(dae, False)
         requires_grad(discriminator, True)
         requires_grad(cooccur_discriminator, True)
         requires_grad(distribution_discriminator, True)
@@ -178,12 +175,10 @@ def train(
         Training Discriminators
         '''
 
-        iter_start_time = time.time()
-
         # Feature Encoding & Generation
         structure1, texture1 = encoder(real_img)
         secret_tensor = torch.rand(size=(structure1.shape[0], args.N, structure1.shape[2], structure1.shape[3]),
-                                   dtype=torch.float).cuda() * 2 - 1
+                                   dtype=torch.float).cuda() * 2 - 1  # batch*in_channel*8*8
         structure2 = stru_generator(secret_tensor)
         texture2 = torch.rand_like(texture1) * 2 - 1
 
@@ -293,17 +288,49 @@ def train(
         fake_patch_pred, _ = cooccur_discriminator(fake_patch, ref_patch, ref_batch=args.ref_crop)
         G_texture_loss = g_nonsaturating_loss(fake_patch_pred)
 
-        # L_{E,stru}
-        if iter_idx > args.num_iters * 0.8:
-            container_image = fake_img3
-        else:
-            container_image = fake_img2
-        fake_structure2, _ = encoder(container_image)
-        E_stru_loss = F.l1_loss(fake_structure2, structure2)
+        # Add Gaussian Noise
+        random_sigma = torch.rand(1)[0] * 0.2
+        noised_fake_img2 = fake_img2 + torch.randn(size=fake_img2.shape).cuda() * (random_sigma)
+        noised_fake_img3 = fake_img3 + torch.randn(size=fake_img3.shape).cuda() * (random_sigma)
+        noised_fake_img2 = noised_fake_img2.clamp(-1, 1)
+        noised_fake_img3 = noised_fake_img3.clamp(-1, 1)
 
-        # L_{REC}
-        fake_tensor = extractor(fake_structure2)
-        Ex_rec_loss = F.l1_loss(fake_tensor, secret_tensor)
+        with torch.no_grad():
+            denoised_fake_img2 = dae(noised_fake_img2)
+            denoised_fake_img3 = dae(noised_fake_img3)
+
+        # Re-Extract
+        recovered_structure_2, _ = encoder(fake_img2)
+        recovered_structure_3, _ = encoder(fake_img3)
+        noised_recovered_structure_2, _ = encoder(noised_fake_img2)
+        noised_recovered_structure_3, _ = encoder(noised_fake_img3)
+        denoised_recovered_structure_2, _ = encoder(denoised_fake_img2)
+        denoised_recovered_structure_3, _ = encoder(denoised_fake_img3)
+
+        original_stru_extract_loss = F.l1_loss(recovered_structure_2, structure2) + \
+                                     F.l1_loss(recovered_structure_3, structure2)
+        noised_stru_extract_loss = F.l1_loss(noised_recovered_structure_2, structure2) + \
+                                   F.l1_loss(noised_recovered_structure_3, structure2)
+        denoised_stru_extract_loss = F.l1_loss(denoised_recovered_structure_2, structure2) + \
+                                     F.l1_loss(denoised_recovered_structure_3, structure2)
+
+        E_stru_loss = (original_stru_extract_loss + noised_stru_extract_loss + denoised_stru_extract_loss)
+
+        recovered_tensor_2 = extractor(recovered_structure_2)
+        recovered_tensor_3 = extractor(recovered_structure_3)
+        noised_recovered_tensor_2 = extractor(noised_recovered_structure_2)
+        noised_recovered_tensor_3 = extractor(noised_recovered_structure_3)
+        denoised_recovered_tensor_2 = extractor(denoised_recovered_structure_2)
+        denoised_recovered_tensor_3 = extractor(denoised_recovered_structure_3)
+
+        original_mess_extract_loss = F.l1_loss(recovered_tensor_2, secret_tensor) + \
+                                     F.l1_loss(recovered_tensor_3, secret_tensor)
+        noised_mess_extract_loss = F.l1_loss(noised_recovered_tensor_2, secret_tensor) + \
+                                   F.l1_loss(noised_recovered_tensor_3, secret_tensor)
+        denoised_mess_extract_loss = F.l1_loss(denoised_recovered_tensor_2, secret_tensor) + \
+                                     F.l1_loss(denoised_recovered_tensor_3, secret_tensor)
+
+        Ex_rec_loss = (original_mess_extract_loss + noised_mess_extract_loss + denoised_mess_extract_loss)
 
         # Record Loss
         loss_dict["G_rec_loss"] = G_rec_loss
@@ -335,8 +362,6 @@ def train(
         Loss_REC.backward()
         ex_optim.step()
 
-        iter_training_times.append(time.time() - iter_start_time)
-
         accumulate(encoder_ema, encoder, accum)
         accumulate(generator_ema, generator, accum)
         accumulate(stru_generator_ema, stru_generator, accum)
@@ -367,8 +392,6 @@ def train(
             with open(f'{base_dir}/training_logs.txt', 'a') as fp:
                 fp.write(f'{log_output}\n')
 
-            print(np.array(iter_training_times).mean())
-
         # Output Samples
         if iter_idx % args.show_every == 0:
             with torch.no_grad():
@@ -378,7 +401,6 @@ def train(
                 extractor_ema.eval()
 
                 # Sample a secret message and map it to secret tensor
-                structure1, texture1 = encoder_ema(real_img)
                 message = torch.randint(low=0, high=2, size=(
                     structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]),
                                         dtype=torch.float).cuda()
@@ -393,44 +415,62 @@ def train(
                 texture2 = torch.rand_like(texture1) * 2 - 1
 
                 # Image Synthesis
-                fake_img1 = generator_ema(structure1, texture1)
-                fake_img2 = generator_ema(structure2, texture1)
                 fake_img3 = generator_ema(structure2, texture2)
 
-                # Secret Tensor Extracting
-                if iter_idx > args.num_iters * 0.8:
-                    container_image = fake_img3
-                    fake_img_used_as_container = 3
-                else:
-                    container_image = fake_img2
-                    fake_img_used_as_container = 2
-                recovered_structure2, _ = encoder_ema(container_image)
-                recovered_secret_tensor = extractor_ema(recovered_structure2)
+                with torch.no_grad():
+                    # Add Gaussian Noise
+                    random_sigma = torch.rand(1)[0] * 0.2
+                    noised_fake_img3 = fake_img3 + torch.randn(size=fake_img3.shape).cuda() * (random_sigma)
+                    noised_fake_img3 = noised_fake_img3.clamp(-1, 1)
+                    denoised_fake_img3 = dae(noised_fake_img3)
 
-                tensor_recovering_loss = torch.mean(torch.abs(secret_tensor - recovered_secret_tensor))
+                # Re-Extract
+                original_recovered_structure, _ = encoder_ema(fake_img3)
+                noised_recovered_structure, _ = encoder_ema(noised_fake_img3)
+                denoised_recovered_structure, _ = encoder_ema(denoised_fake_img3)
 
-                recovered_secret_tensor = recovered_secret_tensor.reshape(
+                original_recovered_tensor = extractor_ema(original_recovered_structure)
+                noised_recovered_tensor = extractor_ema(noised_recovered_structure)
+                denoised_recovered_tensor = extractor_ema(denoised_recovered_structure)
+
+                original_extract_loss = F.l1_loss(original_recovered_tensor, secret_tensor)
+                noised_extract_loss = torch.mean(torch.abs(noised_recovered_tensor - secret_tensor))
+                denoised_extract_loss = torch.mean(torch.abs(denoised_recovered_tensor - secret_tensor))
+
+                original_recovered_tensor = original_recovered_tensor.reshape(
                     shape=(structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]))
-                recovered_message = tensor_to_message(recovered_secret_tensor, sigma=1).cuda()
+                original_recovered_message = tensor_to_message(original_recovered_tensor, sigma=1).cuda()
 
-                BER = torch.mean(torch.abs(message - recovered_message))
-                ACC = 1 - BER
+                noised_recovered_tensor = noised_recovered_tensor.reshape(
+                    shape=(structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]))
+                noised_recovered_message = tensor_to_message(noised_recovered_tensor, sigma=1).cuda()
 
-                print(f'[Testing {iter_idx:07d}/{args.num_iters:07d}] sigma=1 delta=50% '
-                      f'using synthesised image X_{fake_img_used_as_container} '
-                      f'ACC of Msg: {ACC:.4f}; L1 loss of tensor: {tensor_recovering_loss:.4f}')
+                denoised_recovered_tensor = denoised_recovered_tensor.reshape(
+                    shape=(structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]))
+                denoised_recovered_message = tensor_to_message(denoised_recovered_tensor, sigma=1).cuda()
 
-                sample = torch.cat((real_img, fake_img1, fake_img2, fake_img3), 0)
+                original_BER = torch.mean(torch.abs(message - original_recovered_message))
+                noised_BER = torch.mean(torch.abs(message - noised_recovered_message))
+                denoised_BER = torch.mean(torch.abs(message - denoised_recovered_message))
+
+                original_ACC = 1 - original_BER
+                noised_ACC = 1 - noised_BER
+                denoised_ACC = 1 - denoised_BER
+
+                print(f'[Testing {iter_idx:06d}/{args.num_iters:06d}] sigma=1 delta=50% '
+                      f'ACC of Original Image: {original_ACC:.4f}; L1 loss of tensor: {original_extract_loss:.4f}'
+                      f'ACC of   Noised Image: {noised_ACC:.4f}; L1 loss of tensor: {noised_extract_loss:.4f}'
+                      f'ACC of Denoised Image: {denoised_ACC:.4f}; L1 loss of tensor: {denoised_extract_loss:.4f}')
+
+                sample = torch.cat((fake_img3, noised_fake_img3, denoised_fake_img3), dim=3)
 
                 utils.save_image(
                     sample,
-                    f"{sample_dir}/{iter_idx:07d}.png",
+                    f"{sample_dir}/{iter_idx:06d}.png",
                     nrow=int(args.batch_size),
                     normalize=True,
                     range=(-1, 1),
                 )
-
-                print(f'Sample images are saved in experiments/{exp_name}/samples')
 
         # Save models
         if iter_idx % args.save_every == 0:
@@ -449,15 +489,14 @@ def train(
                     "generator_ema": generator_ema.state_dict(),
                     "stru_generator_ema": stru_generator_ema.state_dict(),
                     "extractor_ema": extractor_ema.state_dict(),
+                    "dae": dae.state_dict(),
                     "g_optim": g_optim.state_dict(),
                     "ex_optim": ex_optim.state_dict(),
                     "d_optim": d_optim.state_dict(),
                     "args": args,
                 },
-                f"{ckpt_dir}/{iter_idx}.pt",
+                f"{ckpt_dir}/{idx}.pt",
             )
-
-            print(f'Checkpoint is saved in experiments/{exp_name}/checkpoints')
 
 
 if __name__ == "__main__":
@@ -467,30 +506,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
+    # Arg parameters
+
+    parser.add_argument("--exp_name", type=str, required=True)
+    parser.add_argument("--ideas_ckpt", type=str, default=800000)
+    parser.add_argument("--dae_ckpt", type=str, default=100000)
+
     parser.add_argument("--dataset_path", type=str, required=True)
     parser.add_argument("--dataset_type", choices=['offical_lmdb', 'resized_lmdb', 'normal'])
-    parser.add_argument("--exp_name", type=str, required=True)
-    parser.add_argument("--num_iters", type=int, default=1000000)
-    parser.add_argument("--N", type=int, default=1)
-    parser.add_argument("--lr", type=float, default=0.002)
-
-    parser.add_argument("--ckpt", type=str, default=None)
+    parser.add_argument("--num_iters", type=int, default=100000)
     parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--image_size", type=int, default=256)
-
-    parser.add_argument("--r1", type=float, default=10)
-    parser.add_argument("--cooccur_r1", type=float, default=1)
-    parser.add_argument("--dist_r1", type=float, default=1)
-
-    parser.add_argument("--lambda_G", type=float, default=1)
-    parser.add_argument("--lambda_E", type=float, default=1)
-    parser.add_argument("--lambda_REC", type=float, default=5)
-
-    parser.add_argument("--ref_crop", type=int, default=4)
-    parser.add_argument("--n_crop", type=int, default=8)
-    parser.add_argument("--d_reg_every", type=int, default=16)
-    parser.add_argument("--channel", type=int, default=32)
-    parser.add_argument("--channel_multiplier", type=int, default=1)
 
     parser.add_argument("--log_every", type=int, default=200)
     parser.add_argument("--show_every", type=int, default=1000)
@@ -498,19 +523,50 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    base_dir = f"experiments/{args.exp_name}"
+    # Make Dirs
+
+    base_dir = f"experiments/{args.exp_name}/Robust_IDEAS_02"
     ckpt_dir = f"{base_dir}/checkpoints"
     sample_dir = f"{base_dir}/samples"
 
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(sample_dir, exist_ok=True)
 
-    with open(f"{base_dir}/training_config.txt", "wt") as fp:
-        for k, v in vars(args).items():
-            fp.write(f'{k}: {v}\n')
-        fp.close()
+    # Load ckpt
+
+    print("load model:", args.ideas_ckpt)
+
+    ideas_ckpt = torch.load(f"experiments/{args.exp_name}/checkpoints/{args.ideas_ckpt}.pt",
+                            map_location=lambda storage, loc: storage)
+
+    dae_ckpt = torch.load(f"experiments/{args.exp_name}/DAE/checkpoints/{args.dae_ckpt}.pt",
+                          map_location=lambda storage, loc: storage)
+
+    # Load arg parameters in trained IDEAS
+    ideas_args = ideas_ckpt['args']
 
     args.start_iter = 0
+
+    args.N = ideas_args.N
+    args.lr = ideas_args.lr
+
+    args.image_size = ideas_args.image_size
+
+    args.r1 = ideas_args.r1
+    args.cooccur_r1 = ideas_args.cooccur_r1
+    args.dist_r1 = ideas_args.dist_r1
+
+    args.lambda_G = ideas_args.lambda_G
+    args.lambda_E = ideas_args.lambda_E
+    args.lambda_REC = ideas_args.lambda_REC
+
+    args.ref_crop = ideas_args.ref_crop
+    args.n_crop = ideas_args.n_crop
+    args.d_reg_every = ideas_args.d_reg_every
+    args.channel = ideas_args.channel
+    args.channel_multiplier = ideas_args.channel_multiplier
+
+    # Initialize Networks
 
     encoder = Encoder(args.channel).to(device)
     generator = Generator(args.channel).to(device)
@@ -526,22 +582,34 @@ if __name__ == "__main__":
     stru_generator_ema = StructureGenerator(args.channel, N=args.N).to(device)
     extractor_ema = Extractor(args.channel, N=args.N).to(device)
 
+    dae = DenoisingAutoencoder(args.channel).to(device)
+    dae.load_state_dict(dae_ckpt["dae"])
+    dae.eval()
+
+    encoder.load_state_dict(ideas_ckpt["encoder"])
+    generator.load_state_dict(ideas_ckpt["generator"])
+    stru_generator.load_state_dict(ideas_ckpt["stru_generator"])
+    extractor.load_state_dict(ideas_ckpt["extractor"])
+
+    discriminator.load_state_dict(ideas_ckpt["discriminator"])
+    cooccur_discriminator.load_state_dict(ideas_ckpt["cooccur_discriminator"])
+    distribution_discriminator.load_state_dict(ideas_ckpt["distribution_discriminator"])
+
+    encoder_ema.load_state_dict(ideas_ckpt["encoder_ema"])
+    generator_ema.load_state_dict(ideas_ckpt["generator_ema"])
+    stru_generator_ema.load_state_dict(ideas_ckpt["stru_generator_ema"])
+    extractor_ema.load_state_dict(ideas_ckpt["extractor_ema"])
+
     encoder_ema.eval()
     generator_ema.eval()
     stru_generator_ema.eval()
     extractor_ema.eval()
 
-    accumulate(encoder_ema, encoder, 0)
-    accumulate(generator_ema, generator, 0)
-    accumulate(stru_generator_ema, stru_generator, 0)
-    accumulate(extractor_ema, extractor, 0)
-
     d_reg_ratio = args.d_reg_every / (args.d_reg_every + 1)
 
     g_optim = optim.Adam(
-        list(generator.parameters())
-        + list(encoder.parameters())
-        + list(stru_generator.parameters()),
+        list(generator.parameters()) + list(encoder.parameters()) +
+        list(stru_generator.parameters()),
         lr=args.lr,
         betas=(0, 0.99),
     )
@@ -551,38 +619,15 @@ if __name__ == "__main__":
         betas=(0, 0.99),
     )
     d_optim = optim.Adam(
-        list(discriminator.parameters())
-        + list(cooccur_discriminator.parameters())
-        + list(distribution_discriminator.parameters()),
+        list(discriminator.parameters()) + list(cooccur_discriminator.parameters()) + list(
+            distribution_discriminator.parameters()),
         lr=args.lr * d_reg_ratio,
         betas=(0 ** d_reg_ratio, 0.99 ** d_reg_ratio),
     )
 
-    if args.ckpt is not None:
-        print("load model:", args.ckpt)
-
-        ckpt = torch.load(f"{ckpt_dir}/{args.ckpt}.pt",
-                          map_location=lambda storage, loc: storage)
-
-        args.start_iter = ckpt['iter_idx']
-
-        encoder.load_state_dict(ckpt["encoder"])
-        generator.load_state_dict(ckpt["generator"])
-        stru_generator.load_state_dict(ckpt["stru_generator"])
-        extractor.load_state_dict(ckpt["extractor"])
-
-        discriminator.load_state_dict(ckpt["discriminator"])
-        cooccur_discriminator.load_state_dict(ckpt["cooccur_discriminator"])
-        distribution_discriminator.load_state_dict(ckpt["distribution_discriminator"])
-
-        encoder_ema.load_state_dict(ckpt["encoder_ema"])
-        generator_ema.load_state_dict(ckpt["generator_ema"])
-        stru_generator_ema.load_state_dict(ckpt["stru_generator_ema"])
-        extractor_ema.load_state_dict(ckpt["extractor_ema"])
-
-        g_optim.load_state_dict(ckpt["g_optim"])
-        ex_optim.load_state_dict(ckpt["ex_optim"])
-        d_optim.load_state_dict(ckpt["d_optim"])
+    g_optim.load_state_dict(ideas_ckpt["g_optim"])
+    ex_optim.load_state_dict(ideas_ckpt["ex_optim"])
+    d_optim.load_state_dict(ideas_ckpt["d_optim"])
 
     transform = transforms.Compose(
         [
@@ -599,10 +644,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         sampler=data_sampler(dataset, shuffle=True)
     )
-
-    print('Data Loaded')
-
-    exp_name = args.exp_name
 
     train(
         args,
@@ -621,6 +662,6 @@ if __name__ == "__main__":
         generator_ema,
         stru_generator_ema,
         extractor_ema,
-        device,
-        exp_name
+        dae,
+        device
     )

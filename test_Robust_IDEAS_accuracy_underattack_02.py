@@ -66,7 +66,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--exp_name", type=str, default="default")
-    parser.add_argument("--ckpt", type=int, default=900000)
+    parser.add_argument("--ckpt", type=int, default=100000)
     parser.add_argument("--sigma", type=int, default=1)
     parser.add_argument("--delta", type=float, default=0.5)
     parser.add_argument("--num", type=int, default=1000)
@@ -84,11 +84,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Load CheckPoints
-    ckpt = torch.load(f"experiments/{args.exp_name}/checkpoints/{args.ckpt}.pt",
+    ckpt = torch.load(f"experiments/{args.exp_name}/Robust_IDEAS_02/checkpoints/{args.ckpt}.pt",
                       map_location=lambda storage, loc: storage)
     ckpt_args = ckpt["args"]
 
-    base_dir = f'results/test_IDEAS_accuracy_underattack/{args.exp_name}/sigma={args.sigma}_delta={args.delta}'
+    base_dir = f'results/test_Robust_IDEAS_accuracy_underattack_02/{args.exp_name}/sigma={args.sigma}_delta={args.delta}'
 
     # Make Dirs
     if args.save_images:

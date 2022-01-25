@@ -23,6 +23,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="mzp@47.101.59.238:6001">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/mzp/IDEAS" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
     </serverData>
   </component>
 </project>
