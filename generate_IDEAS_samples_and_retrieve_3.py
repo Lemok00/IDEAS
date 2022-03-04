@@ -17,7 +17,7 @@ from dataset import set_dataset
 
 warnings.simplefilter('ignore')
 
-from IDEAS_models import Generator, StructureGenerator,Encoder,Extractor
+from IDEAS_models import Generator, StructureGenerator, Encoder, Extractor
 import random
 
 from FID.inception import InceptionV3
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt", type=int, default=900000)
     parser.add_argument("--sigma", type=int, default=1)
     parser.add_argument("--delta", type=float, default=0.5)
-    parser.add_argument("--num", type=int, default=1000)
+    parser.add_argument("--num", type=int, default=100)
 
     parser.add_argument("--dataset_path", type=str, required=True)
     parser.add_argument("--npz_path", type=str, required=True)
@@ -83,7 +83,7 @@ if __name__ == "__main__":
                       map_location=lambda storage, loc: storage)
     ckpt_args = ckpt["args"]
 
-    result_dir = f'results/generate_IDEAS_samples_and_retrieve/{args.exp_name}/sigma={args.sigma}_delta={args.delta}'
+    result_dir = f'results/generate_IDEAS_samples_and_retrieve_02/{args.exp_name}/sigma={args.sigma}_delta={args.delta}'
     os.makedirs(result_dir, exist_ok=True)
 
     # Load Models
@@ -91,9 +91,6 @@ if __name__ == "__main__":
     generator = Generator(ckpt_args.channel).to(device)
     stru_generator = StructureGenerator(ckpt_args.channel, N=ckpt_args.N).to(device)
     extractor = Extractor(ckpt_args.channel, N=ckpt_args.N).to(device)
-
-    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[2048]
-    inception = InceptionV3([block_idx]).to(device)
 
     encoder.load_state_dict(ckpt["encoder_ema"])
     generator.load_state_dict(ckpt["generator_ema"])
@@ -113,10 +110,11 @@ if __name__ == "__main__":
     noises = noises.reshape(shape=(args.num, ckpt_args.N, tensor_size, tensor_size)).to(device)
 
     transform = transforms.Compose([
-        # transforms.Resize((299, 299)),
-        transforms.ToTensor()])
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+    ])
 
-    dataset = set_dataset(args.dataset_type,args.dataset_path, transform,256)
+    dataset = set_dataset(args.dataset_type, args.dataset_path, transform, 256)
 
     dataloader = torch.utils.data.DataLoader(dataset,
                                              batch_size=1,
@@ -124,10 +122,24 @@ if __name__ == "__main__":
                                              drop_last=False,
                                              num_workers=2)
 
-    pred_arr = np.load(args.npz_path)
-    print(pred_arr.shape)
+    training_structures = np.load(args.npz_path)
+    #print(training_structures)
+    print(training_structures.shape)
+    print(np.linalg.norm(training_structures[0] - training_structures[1]))
+    # training_structures = np.empty((len(dataset), 8 * 16 * 16))
+    # start_idx = 0
+    # for idx, batch in tqdm(enumerate(dataloader)):
+    #     batch = batch.to(device)
+    #
+    #     with torch.no_grad():
+    #         structure, _ = encoder(batch)
+    #
+    #     structure = structure.view(structure.shape[0], -1).cpu().numpy()
+    #     training_structures[idx] = structure[0]
 
     fake_images = []
+    retrived_images = []
+    structures = []
     for i in range(1, args.num + 1):
         with torch.no_grad():
             message = messages[i - 1].unsqueeze(0)
@@ -137,94 +149,32 @@ if __name__ == "__main__":
             fake_image = generator(structure, texture)  # (-1,1)
             fake_images.append(fake_image)
             utils.save_image(fake_image,
-                             f'{result_dir}/{i:06d}_generated.png',
+                             f'{result_dir}/{i:06d}_synthesised.png',
                              normalize=True,
                              range=(-1, 1))
+
+            # structure, _ = encoder(fake_image)
+
+            structure = structure.view(structure.shape[0], -1).cpu().numpy()
+            structures.append(structure)
+            if i>3:
+                print('stru',np.linalg.norm(structures[0] - structures[1]))
+            distance = np.linalg.norm(training_structures - structure, ord=2, axis=1)
+            min_distance_index = np.argmin(distance)
+            print(distance[min_distance_index])
+            retrieved_image = dataset.__getitem__(min_distance_index).to(device).unsqueeze(0)
+            retrived_images.append(retrieved_image)
+
+            utils.save_image(retrieved_image,
+                             f'{result_dir}/{i:06d}_retrieved.png',
+                             normalize=True,
+                             range=(-1, 1))
+
     fake_images = torch.concat(fake_images, dim=0)
-    print(fake_images.shape)
-    # fake_images = torch.nn.functional.interpolate(fake_images,size=(299,299),mode='bicubic')
+    retrived_images = torch.concat(retrived_images, dim=0)
 
-    fake_preds = []
-    for i in range(args.num // 50):
-        fake_pred = inception(fake_images[i * 50:(i + 1) * 50])[0]
-        fake_preds.append(fake_pred)
-    fake_preds = torch.concat(fake_preds, dim=0)
-    fake_preds = fake_preds.squeeze(3).squeeze(2).cpu().numpy()
-
-    retrived_images = []
-    retrived_preds = []
-    BERs=[]
-    for i in tqdm(range(1, fake_preds.shape[0] + 1)):
-        distance = np.linalg.norm(pred_arr - fake_preds[i-1], ord=2, axis=1)
-        min_distance_index = np.argmin(distance)
-        retrieved_image = dataset.__getitem__(min_distance_index).to(device).unsqueeze(0)
-        retrived_images.append(retrieved_image)
-        retrived_preds.append(pred_arr[min_distance_index])
-
-        retrieved_structure, _ = encoder(retrieved_image)
-        retrieved_noise = extractor(retrieved_structure)
-        retrieved_noise = retrieved_noise.reshape(shape=(1, ckpt_args.N * tensor_size * tensor_size))
-        retrieved_message = tensor_to_message(retrieved_noise, sigma=args.sigma)
-
-        BERs.append(torch.mean(torch.abs((messages[i-1].unsqueeze(0) - retrieved_message))).item())
-
-        utils.save_image(dataset.__getitem__(min_distance_index),
-                         f'{result_dir}/{i:06d}_training.png',
-                         normalize=True,
-                         range=(0, 1))
-
-    # retrived_images = torch.cat(retrived_images,dim=0)
-    # print(retrived_images.shape)
-    # for i in range(args.num // 50):
-    #     r_pred = inception(retrived_images[i * 50:(i + 1) * 50])[0]
-    #     r_pred = r_pred.squeeze(3).squeeze(2).cpu().numpy()
-    #     for j in range(r_pred.shape[0]):
-    #         print((r_pred[j]-retrived_preds[i*50+j]))
-
-    # utils.save_image(torch.cat([(fake_images+1)/2,retrived_images],dim=0),
-    #                  f'{result_dir}/000000_total.png',
-    #                  normalize=True,
-    #                  nrow=args.num,
-    #                  range=(0, 1))
-
-        # print(fake_image_pred.shape)
-        # fake_image_pred = np.repeat(fake_image_pred, pred_arr.shape[0], axis=0)
-        # print(fake_image_pred.shape)
-
-        # distance = pred_arr - fake_image_pred
-        # distance = np.linalg.norm(pred_arr - fake_image_pred, ord=2, axis=1)
-        #
-        # min_distance_index = np.argmin(distance)
-        #
-        # print(distance[min_distance_index])
-        # print(np.sort(distance))
-        # print(pred_arr[min_distance_index])
-        # print(fake_image_pred)
-        # print(np.linalg.norm(pred_arr[min_distance_index] - fake_image_pred, ord=2, axis=1))
-        #
-        # retrieved_image = dataset.__getitem__(min_distance_index).to(device)
-        # retrieved_image = retrieved_image.unsqueeze(0)
-        #
-        # retrieved_image_pred = inception(retrieved_image)[0]
-        # retrieved_image_pred = retrieved_image_pred.squeeze(3).squeeze(2).cpu().numpy()
-        #
-        # print(retrieved_image_pred.shape)
-        # print(fake_image_pred.shape)
-        # retrived_distance = np.linalg.norm(retrieved_image_pred - fake_image_pred, ord=2, axis=1)
-        # print(retrieved_image_pred)
-        # print(retrived_distance)
-        #
-        # utils.save_image(dataset.__getitem__(min_distance_index),
-        #                  f'{result_dir}/{i:06d}_training.png',
-        #                  normalize=True,
-        #                  range=(0, 1))
-        # print(dataset.__getitem__(min_distance_index).shape)
-
-        # print(distance.mean(axis=1).shape)
-        # print(np.argmin(distance.mean(axis=1)))
-    ACCs = 1 - np.array(BERs)
-    ACC_avg = ACCs.mean()
-
-    print(f"{args.exp_name} Sigma={args.sigma} Delta={args.delta}")
-    print(f"ACC AVG: {ACC_avg:.6f}")
-    print(f'Generating {args.exp_name} (Sigma={args.sigma}, Delta={args.delta}) Samples Done!')
+    utils.save_image(torch.cat([fake_images, retrived_images], dim=0),
+                     f'{result_dir}/000000_total.png',
+                     normalize=True,
+                     nrow=args.num,
+                     range=(-1, 1))

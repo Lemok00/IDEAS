@@ -2,7 +2,7 @@
 <project version="4">
   <component name="SshConfigs">
     <configs>
-      <sshConfig authType="PASSWORD" host="47.101.59.238" id="21f7039d-b222-4292-9295-8a258ae78c09" port="6001" customName="3090" nameFormat="CUSTOM" username="mzp">
+      <sshConfig authType="PASSWORD" connectionConfig="{&quot;serverAliveInterval&quot;:300}" host="47.101.59.238" id="21f7039d-b222-4292-9295-8a258ae78c09" port="6001" customName="3090" nameFormat="CUSTOM" username="mzp">
         <option name="customName" value="3090" />
       </sshConfig>
     </configs>

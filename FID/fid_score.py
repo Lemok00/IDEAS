@@ -35,12 +35,15 @@ from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
 from imutils.paths import list_files
 
-try:
-    from tqdm import tqdm
-except ImportError:
-    # If tqdm is not available, provide a mock version of it
-    def tqdm(x):
-        return x
+# try:
+#     from tqdm import tqdm
+# except ImportError:
+#     # If tqdm is not available, provide a mock version of it
+#     def tqdm(x):
+#         return x
+
+def tqdm(x):
+    return x
 
 from inception import InceptionV3
 
