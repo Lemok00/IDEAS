@@ -8,6 +8,12 @@ from stylegan2.model import StyledConv_without_noise as StyledConv, Blur, EqualL
 from stylegan2.op import FusedLeakyReLU
 
 
+# Encoder将图像的结构编码（8x16x16）编码到和secret tensor相同大小（Nx16x16）的均匀分布（需要加分布判别器）上
+# 就会有ST1和ST2，然后S1和S2都由Structure Generator生成，
+# 在提取的时候，三个图像都要提取ST1/2，并计算损失。
+# 思想是在训练的过程中，尽量地让real Structure 和 fake Structure走相同的路径，
+# 避免为了提高extraction loss而有意地区分它们
+
 class EqualConvTranspose2d(nn.Module):
     def __init__(
             self, in_channel, out_channel, kernel_size, stride=1, padding=0, bias=True
@@ -231,7 +237,7 @@ class Encoder(nn.Module):
     def __init__(
             self,
             channel,
-            structure_channel=8,
+            output_channel=1,
             texture_channel=2048,
             blur_kernel=(1, 3, 3, 1),
     ):
@@ -247,8 +253,12 @@ class Encoder(nn.Module):
 
         self.stem = nn.Sequential(*stem)
 
+        ch = in_channel
         self.structure = nn.Sequential(
-            ConvLayer(ch, ch, 1), ConvLayer(ch, structure_channel, 1)
+            ConvLayer(ch, ch, 1),
+            ResBlock(ch, ch, downsample=False, padding="reflect"),
+            ResBlock(ch, ch, downsample=False, padding="reflect"),
+            ConvLayer(ch, output_channel, 1)
         )
 
         self.texture = nn.Sequential(
@@ -429,40 +439,14 @@ class DistributionDiscriminator(nn.Module):
     def __init__(self, texture_size=2048):
         super().__init__()
         self.model = nn.Sequential(
-            EqualLinear(2048, 512, activation="fused_lrelu"),
-            EqualLinear(512, 128, activation="fused_lrelu"),
-            EqualLinear(128, 32, activation="fused_lrelu"),
-            EqualLinear(32, 1, activation="fused_lrelu")
+            EqualLinear(texture_size, texture_size // 4, activation="fused_lrelu"),
+            EqualLinear(texture_size // 4, texture_size // 16, activation="fused_lrelu"),
+            EqualLinear(texture_size // 16, texture_size // 64, activation="fused_lrelu"),
+            EqualLinear(texture_size // 64, 1, activation="fused_lrelu")
         )
 
     def forward(self, input):
         out = self.model(input)
-        return out
-
-
-class StructureDiscriminator(nn.Module):
-    def __init__(self,
-                 channel,
-                 structure_channel=8):
-        super(StructureDiscriminator, self).__init__()
-        self.conv = nn.Sequential(
-            ConvLayer(structure_channel, channel, 1),
-            ResBlock(channel, channel * 2, downsample=True, padding="reflect"),
-            ResBlock(channel * 2, channel * 2, downsample=False, padding="reflect"),
-            ResBlock(channel * 2, channel * 4, downsample=True, padding="reflect"),
-            ResBlock(channel * 4, channel * 4, downsample=False, padding="reflect")
-        )
-        self.linear = nn.Sequential(
-            EqualLinear(channel * 4 * 4 * 4, channel * 4, activation="fused_lrelu"),
-            EqualLinear(channel * 4, channel, activation="fused_lrelu"),
-            EqualLinear(channel, 1)
-        )
-
-    def forward(self, input):
-        out = self.conv(input)
-        out = out.view(out.shape[0], -1)
-        out = self.linear(out)
-
         return out
 
 

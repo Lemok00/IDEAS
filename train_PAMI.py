@@ -12,8 +12,8 @@ from torchvision import transforms, utils
 import time
 from mytime import time_change
 
-from IDEAS_models import Encoder, Generator, StructureGenerator, Discriminator, CooccurDiscriminator, \
-    DistributionDiscriminator, Extractor
+from PAMI_models import Encoder, Generator, StructureGenerator, Discriminator, CooccurDiscriminator, \
+    DistributionDiscriminator, Extractor, StructureDiscriminator
 from dataset import set_dataset
 
 
@@ -48,14 +48,11 @@ def message_to_tensor(message, sigma, delta):
     secret_tensor = torch.zeros(size=(message.shape[0], message.shape[1] // sigma))
     step = 2 / 2 ** sigma
     random_interval_size = step * delta
-    for i in range(secret_tensor.shape[0]):
-        for j in range(secret_tensor.shape[1]):
-            message_num = 0
-            for idx in range(sigma):
-                message_num += message[i][j * sigma + idx] * 2 ** (sigma - idx - 1)
-            secret_tensor[i][j] = step * (message_num + 0.5) - 1
-            secret_tensor[i][j] = secret_tensor[i][j] + (
-                    torch.rand(1)[0] * random_interval_size * 2 - random_interval_size)
+    message_nums = torch.zeros_like(secret_tensor)
+    for i in range(sigma):
+        message_nums += message[:, i::sigma] * 2 ** (sigma - i - 1)
+    secret_tensor = step * (message_nums + 0.5) - 1
+    secret_tensor = secret_tensor + (torch.rand_like(secret_tensor) * random_interval_size * 2 - random_interval_size)
     return secret_tensor
 
 
@@ -63,13 +60,13 @@ def tensor_to_message(secret_tensor, sigma):
     message = torch.zeros(size=(secret_tensor.shape[0], secret_tensor.shape[1] * sigma))
     step = 2 / 2 ** sigma
     secret_tensor = torch.clamp(secret_tensor, min=-1, max=1) + 1
-    for i in range(secret_tensor.shape[0]):
-        for j in range(secret_tensor.shape[1]):
-            message_num = int(secret_tensor[i][j] / step)
-            for idx in range(sigma):
-                if message_num >= 2 ** (sigma - idx - 1):
-                    message[i][j * sigma + idx] = 1
-                    message_num -= 2 ** (sigma - idx - 1)
+    message_nums = secret_tensor / step
+    zeros = torch.zeros_like(message_nums)
+    ones = torch.ones_like(message_nums)
+    for i in range(sigma):
+        zero_one_map = torch.where(message_nums >= 2 ** (sigma - i - 1), ones, zeros)
+        message[:, i::sigma] = zero_one_map
+        message_nums -= zero_one_map * 2 ** (sigma - i - 1)
     return message
 
 
@@ -217,8 +214,8 @@ def train(
         D_texture_loss = d_logistic_loss(real_texture_pred, fake_texture_pred)
 
         # L_{D,structure}
-        fake_structure_pred = structure_discriminator(structure2.view(structure2.shape[0],-1))
-        real_structure_pred = structure_discriminator(structure1.view(structure1.shape[0],-1))
+        fake_structure_pred = structure_discriminator(structure2)
+        real_structure_pred = structure_discriminator(structure1)
 
         D_structure_loss = d_logistic_loss(real_structure_pred, fake_structure_pred)
 
@@ -248,7 +245,7 @@ def train(
             D_texture_r1_loss = d_r1_loss(real_texture_pred, texture2)
 
             structure1.requires_grad = True
-            real_structure_pred = structure_discriminator(structure1.view(structure1.shape[0],-1))
+            real_structure_pred = structure_discriminator(structure1)
             D_structure_r1_loss = d_r1_loss(real_structure_pred, structure1)
 
             d_optim.zero_grad()
@@ -300,7 +297,7 @@ def train(
         G_real_loss = g_nonsaturating_loss(fake_pred)
 
         # L_{G,structure}
-        fake_structure_pred = structure_discriminator(structure2.view(structure2.shape[0],-1))
+        fake_structure_pred = structure_discriminator(structure2)
         G_structure_loss = g_nonsaturating_loss(fake_structure_pred)
 
         # L_{E,texture}
@@ -389,8 +386,6 @@ def train(
             with open(f'{base_dir}/training_logs.txt', 'a') as fp:
                 fp.write(f'{log_output}\n')
 
-            print(np.array(iter_training_times).mean())
-
         # Output Samples
         if iter_idx % args.show_every == 0:
             with torch.no_grad():
@@ -403,7 +398,7 @@ def train(
                 structure1, texture1 = encoder_ema(real_img)
                 message = torch.randint(low=0, high=2, size=(
                     structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]),
-                                        dtype=torch.float).cuda()
+                                        dtype=torch.float)
                 secret_tensor = message_to_tensor(message, sigma=1, delta=0.5).cuda()
                 secret_tensor = secret_tensor.reshape(
                     shape=(structure1.shape[0], args.N, structure1.shape[2], structure1.shape[3]))
@@ -433,7 +428,7 @@ def train(
 
                 recovered_secret_tensor = recovered_secret_tensor.reshape(
                     shape=(structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]))
-                recovered_message = tensor_to_message(recovered_secret_tensor, sigma=1).cuda()
+                recovered_message = tensor_to_message(recovered_secret_tensor, sigma=1).cpu().data
 
                 BER = torch.mean(torch.abs(message - recovered_message))
                 ACC = 1 - BER
@@ -543,7 +538,7 @@ if __name__ == "__main__":
     discriminator = Discriminator(args.image_size, channel_multiplier=args.channel_multiplier).to(device)
     cooccur_discriminator = CooccurDiscriminator(args.channel).to(device)
     texture_discriminator = DistributionDiscriminator().to(device)
-    structure_discriminator = DistributionDiscriminator().to(device)
+    structure_discriminator = StructureDiscriminator(args.channel).to(device)
 
     encoder_ema = Encoder(args.channel).to(device)
     generator_ema = Generator(args.channel).to(device)
