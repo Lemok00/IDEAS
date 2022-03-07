@@ -255,9 +255,10 @@ class Encoder(nn.Module):
 
         ch = in_channel
         self.structure = nn.Sequential(
-            ConvLayer(ch, ch, 1),
-            ResBlock(ch, ch, downsample=False, padding="reflect"),
-            ResBlock(ch, ch, downsample=False, padding="reflect"),
+            ConvLayer(ch, ch * 2, 1),
+            ResBlock(ch * 2, ch * 2, downsample=False, padding="reflect"),
+            #ResBlock(ch * 4, ch * 2, downsample=False, padding="reflect"),
+            ResBlock(ch * 2, ch, downsample=False, padding="reflect"),
             ConvLayer(ch, output_channel, 1)
         )
 
@@ -436,16 +437,17 @@ class CooccurDiscriminator(nn.Module):
 
 
 class DistributionDiscriminator(nn.Module):
-    def __init__(self, texture_size=2048):
+    def __init__(self, input_dimension=2048):
         super().__init__()
         self.model = nn.Sequential(
-            EqualLinear(texture_size, texture_size // 4, activation="fused_lrelu"),
-            EqualLinear(texture_size // 4, texture_size // 16, activation="fused_lrelu"),
-            EqualLinear(texture_size // 16, texture_size // 64, activation="fused_lrelu"),
-            EqualLinear(texture_size // 64, 1, activation="fused_lrelu")
+            EqualLinear(input_dimension, input_dimension // 16, activation="fused_lrelu"),
+            #EqualLinear(input_dimension // 4, input_dimension // 16, activation="fused_lrelu"),
+            #EqualLinear(input_dimension // 16, input_dimension // 64, activation="fused_lrelu"),
+            EqualLinear(input_dimension // 16, 1, activation="fused_lrelu")
         )
 
     def forward(self, input):
+        input = input.view(input.shape[0], -1)
         out = self.model(input)
         return out
 

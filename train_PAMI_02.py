@@ -12,8 +12,8 @@ from torchvision import transforms, utils
 import time
 from mytime import time_change
 
-from PAMI_models import Encoder, Generator, StructureGenerator, Discriminator, CooccurDiscriminator, \
-    DistributionDiscriminator, Extractor, StructureDiscriminator
+from PAMI_models_02 import Encoder, Generator, StructureGenerator, Discriminator, CooccurDiscriminator, \
+    DistributionDiscriminator, Extractor
 from dataset import set_dataset
 
 
@@ -129,18 +129,15 @@ def train(
         encoder,
         generator,
         stru_generator,
-        extractor,
         discriminator,
         cooccur_discriminator,
-        texture_discriminator,
-        structure_discriminator,
+        texture_distribution_discriminator,
+        tensor_distribution_discriminator,
         g_optim,
-        ex_optim,
         d_optim,
         encoder_ema,
         generator_ema,
         stru_generator_ema,
-        extractor_ema,
         device,
         exp_name
 ):
@@ -167,11 +164,10 @@ def train(
         requires_grad(encoder, False)
         requires_grad(generator, False)
         requires_grad(stru_generator, False)
-        requires_grad(extractor, False)
         requires_grad(discriminator, True)
         requires_grad(cooccur_discriminator, True)
-        requires_grad(texture_discriminator, True)
-        requires_grad(structure_discriminator, True)
+        requires_grad(texture_distribution_discriminator, True)
+        requires_grad(tensor_distribution_discriminator, True)
 
         '''
         Training Discriminators
@@ -179,24 +175,35 @@ def train(
 
         iter_start_time = time.time()
 
-        # Feature Encoding & Generation
-        structure1, texture1 = encoder(real_img)
-        secret_tensor = torch.rand(size=(structure1.shape[0], args.N, structure1.shape[2], structure1.shape[3]),
-                                   dtype=torch.float).cuda() * 2 - 1
-        structure2 = stru_generator(secret_tensor)
-        texture2 = torch.rand_like(texture1) * 2 - 1
+        with torch.no_grad():
+            # Encode the reference image
+            secret_tensor1, texture1 = encoder(real_img)
 
-        # Image Synthesis
-        fake_img1 = generator(structure1, texture1)
-        fake_img2 = generator(structure2, texture1)
-        fake_img3 = generator(structure2, texture2)
+            # Sampling noises
+            secret_tensor2 = torch.rand_like(secret_tensor1) * 2 - 1
+            texture2 = torch.rand_like(texture1) * 2 - 1
 
+            # Generating structure features
+            secret_tensor = torch.cat([secret_tensor1, secret_tensor2], 0)
+            structure1, structure2 = torch.chunk(stru_generator(secret_tensor), 2)
+            # structure1 = stru_generator(secret_tensor1)
+            # structure2 = stru_generator(secret_tensor2)
+
+            # Image Synthesis
+            fake_img1 = generator(structure1, texture1)
+            fake_img2 = generator(structure2, texture1)
+            fake_img3 = generator(structure2, texture2)
+
+            fake_img = torch.cat([fake_img1, fake_img2, fake_img3], 0)
+
+        # Compute loss for Discriminator
         # L_{D,real}
-        fake_pred = discriminator(torch.cat((fake_img1, fake_img2, fake_img3), 0))
+        fake_pred = discriminator(fake_img.detach())
         real_pred = discriminator(real_img)
 
         D_real_loss = d_logistic_loss(real_pred, fake_pred)
 
+        # Compute loss for Co-occurrence Discriminator
         # L_{D,texture}
         fake_patch = patchify_image(fake_img2, args.n_crop)
         real_patch = patchify_image(real_img, args.n_crop)
@@ -208,25 +215,25 @@ def train(
         D_cooccur_loss = d_logistic_loss(real_patch_pred, fake_patch_pred)
 
         # L_{D,texture}
-        fake_texture_pred = texture_discriminator(texture1)
-        real_texture_pred = texture_discriminator(texture2)
+        fake_texture_pred = texture_distribution_discriminator(texture1)
+        real_texture_pred = texture_distribution_discriminator(texture2)
 
         D_texture_loss = d_logistic_loss(real_texture_pred, fake_texture_pred)
 
-        # L_{D,structure}
-        fake_structure_pred = structure_discriminator(structure2)
-        real_structure_pred = structure_discriminator(structure1)
+        # L_{D,tensor}
+        fake_tensor_pred = tensor_distribution_discriminator(secret_tensor1)
+        real_tensor_pred = tensor_distribution_discriminator(secret_tensor2)
 
-        D_structure_loss = d_logistic_loss(real_structure_pred, fake_structure_pred)
+        D_tensor_loss = d_logistic_loss(real_tensor_pred, fake_tensor_pred)
 
         # Record D Losses and optimize
         loss_dict["D_real_loss"] = D_real_loss
         loss_dict["D_cooccur_loss"] = D_cooccur_loss
         loss_dict["D_texture_loss"] = D_texture_loss
-        loss_dict["D_structure_loss"] = D_structure_loss
+        loss_dict["D_tensor_loss"] = D_tensor_loss
 
         d_optim.zero_grad()
-        (D_real_loss + D_cooccur_loss + D_texture_loss + D_structure_loss).backward()
+        (D_real_loss + D_cooccur_loss + D_texture_loss + D_tensor_loss).backward()
         d_optim.step()
 
         # Regularization
@@ -241,19 +248,19 @@ def train(
             D_cooccur_r1_loss = d_r1_loss(real_patch_pred, real_patch)
 
             texture2.requires_grad = True
-            real_texture_pred = texture_discriminator(texture2)
+            real_texture_pred = texture_distribution_discriminator(texture2)
             D_texture_r1_loss = d_r1_loss(real_texture_pred, texture2)
 
-            structure1.requires_grad = True
-            real_structure_pred = structure_discriminator(structure1)
-            D_structure_r1_loss = d_r1_loss(real_structure_pred, structure1)
+            secret_tensor2.requires_grad = True
+            real_tensor_pred = tensor_distribution_discriminator(secret_tensor2)
+            D_tensor_r1_loss = d_r1_loss(real_tensor_pred, secret_tensor2)
 
             d_optim.zero_grad()
 
             r1_loss_sum = args.r1 / 4 * D_real_r1_loss * args.d_reg_every
             r1_loss_sum += args.cooccur_r1 / 4 * D_cooccur_r1_loss * args.d_reg_every
             r1_loss_sum += args.dist_r1 / 4 * D_texture_r1_loss * args.d_reg_every
-            r1_loss_sum += args.dist_r1 / 4 * D_structure_r1_loss * args.d_reg_every
+            r1_loss_sum += args.dist_r1 / 4 * D_tensor_r1_loss * args.d_reg_every
             r1_loss_sum.backward()
 
             d_optim.step()
@@ -261,48 +268,54 @@ def train(
             loss_dict["D_real_r1_loss"] = D_real_r1_loss
             loss_dict["D_cooccur_r1_loss"] = D_cooccur_r1_loss
             loss_dict["D_texture_r1_loss"] = D_texture_r1_loss
-            loss_dict["D_structure_r1_loss"] = D_structure_r1_loss
+            loss_dict["D_tensor_r1_loss"] = D_tensor_r1_loss
 
         requires_grad(encoder, True)
         requires_grad(generator, True)
         requires_grad(stru_generator, True)
-        requires_grad(extractor, True)
         requires_grad(discriminator, False)
         requires_grad(cooccur_discriminator, False)
-        requires_grad(texture_discriminator, False)
-        requires_grad(structure_discriminator, False)
+        requires_grad(texture_distribution_discriminator, False)
+        requires_grad(tensor_distribution_discriminator, False)
 
         '''
         Training main components.
         '''
 
-        # Feature Encoding & Generation
-        structure1, texture1 = encoder(real_img)
-        secret_tensor = torch.rand(
-            size=(structure1.shape[0], args.N, structure1.shape[2], structure1.shape[3]),
-            dtype=torch.float).cuda() * 2 - 1
-        structure2 = stru_generator(secret_tensor)
+        # Encode the reference image
+        secret_tensor1, texture1 = encoder(real_img)
+
+        # Sampling noises
+        secret_tensor2 = torch.rand_like(secret_tensor1) * 2 - 1
         texture2 = torch.rand_like(texture1) * 2 - 1
+
+        # Generating structure features
+        # secret_tensor = torch.cat([secret_tensor1, secret_tensor2], 0)
+        # structure1, structure2 = torch.chunk(stru_generator(secret_tensor), 2)
+        structure1 = stru_generator(secret_tensor1)
+        structure2 = stru_generator(secret_tensor2)
 
         # Image Synthesis
         fake_img1 = generator(structure1, texture1)
         fake_img2 = generator(structure2, texture1)
         fake_img3 = generator(structure2, texture2)
 
+        fake_img = torch.cat([fake_img1, fake_img2, fake_img3], 0)
+
         # L_{G,rec}
         G_rec_loss = F.l1_loss(fake_img1, real_img)
 
         # L_{G,real}
-        fake_pred = discriminator(torch.cat((fake_img1, fake_img2, fake_img3), 0))
+        fake_pred = discriminator(fake_img)
         G_real_loss = g_nonsaturating_loss(fake_pred)
 
-        # L_{G,structure}
-        fake_structure_pred = structure_discriminator(structure2)
-        G_structure_loss = g_nonsaturating_loss(fake_structure_pred)
-
         # L_{E,texture}
-        fake_texture_pred = texture_discriminator(texture1)
+        fake_texture_pred = texture_distribution_discriminator(texture1)
         E_texture_loss = g_nonsaturating_loss(fake_texture_pred)
+
+        # L_{E,tensor}
+        fake_tensor_pred = tensor_distribution_discriminator(secret_tensor1)
+        E_tensor_loss = g_nonsaturating_loss(fake_tensor_pred)
 
         # L_{G,texture}
         fake_patch = patchify_image(fake_img2, args.n_crop)
@@ -311,31 +324,49 @@ def train(
         G_texture_loss = g_nonsaturating_loss(fake_patch_pred)
 
         # L_{E,stru}
-        if iter_idx > args.num_iters * 0.8:
-            container_image = fake_img3
-        else:
-            container_image = fake_img2
-        fake_structure2, _ = encoder(container_image)
-        E_stru_loss = F.l1_loss(fake_structure2, structure2)
+        fake_tensor1, _ = encoder(fake_img1)
+        fake_tensor2, _ = encoder(fake_img3) if iter_idx > args.num_iters * 0.8 else encoder(fake_img2)
+
+        Ex_rec_loss = (F.l1_loss(fake_tensor1, secret_tensor1)
+                        + F.l1_loss(fake_tensor2, secret_tensor2) * 9) / 10
 
         # L_{REC}
-        fake_tensor = extractor(fake_structure2)
-        Ex_rec_loss = F.l1_loss(fake_tensor, secret_tensor)
+        # fake_tensor1, _ = encoder(fake_img1)
+        # fake_tensor2, _ = encoder(fake_img2)
+        # fake_tensor3, _ = encoder(fake_img3)
+        # fake_tensor, _ = encoder(fake_img)
+        # Ex_rec_loss = F.l1_loss(fake_tensor3, secret_tensor2)
+        # Ex_rec_loss = F.l1_loss(fake_tensor, torch.cat([secret_tensor1, secret_tensor2, secret_tensor2], 0))
+        # Ex_rec_loss = F.l1_loss(torch.cat([fake_tensor1, fake_tensor2, fake_tensor3], 0),
+        #                        torch.cat([secret_tensor1, secret_tensor2, secret_tensor2], 0))
+        # Ex_rec_loss = (F.l1_loss(fake_tensor1, secret_tensor1)
+        #                # + F.l1_loss(fake_tensor2, secret_tensor2)
+        #                + F.l1_loss(fake_tensor2, secret_tensor2))/2
+        # if iter_idx % 3 == 0:
+        #     container_image = fake_img1
+        #     secret_tensor = secret_tensor1
+        # elif iter_idx % 3 == 1:
+        #     container_image = fake_img2
+        #     secret_tensor = secret_tensor2
+        # else:
+        #     container_image = fake_img3
+        #     secret_tensor = secret_tensor2
+        # fake_tensor, _ = encoder(container_image)
+        # Ex_rec_loss = F.l1_loss(fake_tensor, secret_tensor)
 
         # Record Loss
         loss_dict["G_rec_loss"] = G_rec_loss
         loss_dict["G_real_loss"] = G_real_loss
         loss_dict["G_texture_loss"] = G_texture_loss
-        loss_dict["G_structure_loss"] = G_structure_loss
         loss_dict["E_texture_loss"] = E_texture_loss
-        loss_dict["E_stru_loss"] = E_stru_loss
+        loss_dict["E_tensor_loss"] = E_tensor_loss
         loss_dict["Ex_rec_loss"] = Ex_rec_loss
 
         # L_G
-        Loss_G = G_rec_loss + G_texture_loss + G_structure_loss + 2 * G_real_loss
+        Loss_G = G_rec_loss + G_texture_loss + 2 * G_real_loss
 
         # L_E
-        Loss_E = E_texture_loss + E_stru_loss
+        Loss_E = E_texture_loss + E_tensor_loss
 
         # L_REC
         Loss_REC = Ex_rec_loss
@@ -348,27 +379,20 @@ def train(
         Loss_total.backward(retain_graph=True)
         g_optim.step()
 
-        # optimize Extractor
-        ex_optim.zero_grad()
-        Loss_REC.backward()
-        ex_optim.step()
-
         iter_training_times.append(time.time() - iter_start_time)
 
         accumulate(encoder_ema, encoder, accum)
         accumulate(generator_ema, generator, accum)
         accumulate(stru_generator_ema, stru_generator, accum)
-        accumulate(extractor_ema, extractor, accum)
 
         # Log
         if iter_idx % args.log_every == 0:
             G_rec_val = loss_dict["G_rec_loss"].mean().item()
             G_texture_val = loss_dict["G_texture_loss"].mean().item()
-            G_structure_val = loss_dict["G_structure_loss"].mean().item()
             G_real_val = loss_dict["G_real_loss"].mean().item()
 
             E_texture_val = loss_dict["E_texture_loss"].mean().item()
-            E_stru_val = loss_dict["E_stru_loss"].mean().item()
+            E_tensor_val = loss_dict["E_tensor_loss"].mean().item()
 
             Ex_rec_val = loss_dict["Ex_rec_loss"].mean().item()
 
@@ -377,8 +401,8 @@ def train(
             rest_time = (now_time - start_time) / idx * (args.num_iters - iter_idx)
 
             log_output = f"[{iter_idx:07d}/{args.num_iters:07}] Total_loss: {Loss_total.item():.4f}; " \
-                         f"G_rec: {G_rec_val:.4f}; G_texture: {G_texture_val:.4f}; G_structure: {G_structure_val:.4f} ;G_real: {G_real_val:.4f}; " \
-                         f"E_dist: {E_texture_val:.4f}; E_stru: {E_stru_val:.4f}; Ex_rec: {Ex_rec_val:.4f} " \
+                         f"G_rec: {G_rec_val:.4f}; G_texture: {G_texture_val:.4f}; G_real: {G_real_val:.4f}; " \
+                         f"E_texture: {E_texture_val:.4f}; E_tensor: {E_tensor_val:.4f}; Ex_rec: {Ex_rec_val:.4f} " \
                          f"used time: {time_change(used_time)};" \
                          f"rest time: {time_change(rest_time)}"
 
@@ -392,49 +416,36 @@ def train(
                 encoder_ema.eval()
                 generator_ema.eval()
                 stru_generator_ema.eval()
-                extractor_ema.eval()
 
                 # Sample a secret message and map it to secret tensor
-                structure1, texture1 = encoder_ema(real_img)
-                message = torch.randint(low=0, high=2, size=(
-                    structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]),
-                                        dtype=torch.float)
-                secret_tensor = message_to_tensor(message, sigma=1, delta=0.5).cuda()
-                secret_tensor = secret_tensor.reshape(
-                    shape=(structure1.shape[0], args.N, structure1.shape[2], structure1.shape[3]))
+                secret_tensor1, texture1 = encoder_ema(real_img)
+                message = torch.randint(low=0, high=2, size=secret_tensor1.shape, dtype=torch.float)
+                message = message.view(message.shape[0], -1)
+                secret_tensor2 = message_to_tensor(message, sigma=1, delta=0.5).cuda()
+                secret_tensor2 = secret_tensor2.reshape(shape=secret_tensor1.shape)
 
-                # Translate the secret tensor to structure code
-                structure2 = stru_generator_ema(secret_tensor)
-
-                # Sample a texture
+                # Sampling noises
                 texture2 = torch.rand_like(texture1) * 2 - 1
+
+                # Generating structure features
+                secret_tensor = torch.cat([secret_tensor1, secret_tensor2], 0)
+                structure1, structure2 = torch.chunk(stru_generator_ema(secret_tensor), 2)
 
                 # Image Synthesis
                 fake_img1 = generator_ema(structure1, texture1)
                 fake_img2 = generator_ema(structure2, texture1)
                 fake_img3 = generator_ema(structure2, texture2)
 
-                # Secret Tensor Extracting
-                if iter_idx > args.num_iters * 0.8:
-                    container_image = fake_img3
-                    fake_img_used_as_container = 3
-                else:
-                    container_image = fake_img2
-                    fake_img_used_as_container = 2
-                recovered_structure2, _ = encoder_ema(container_image)
-                recovered_secret_tensor = extractor_ema(recovered_structure2)
+                recovered_secret_tensor2, _ = encoder_ema(fake_img3)
+                tensor_recovering_loss = torch.mean(torch.abs(secret_tensor2 - recovered_secret_tensor2))
 
-                tensor_recovering_loss = torch.mean(torch.abs(secret_tensor - recovered_secret_tensor))
-
-                recovered_secret_tensor = recovered_secret_tensor.reshape(
-                    shape=(structure1.shape[0], args.N * structure1.shape[2] * structure1.shape[3]))
-                recovered_message = tensor_to_message(recovered_secret_tensor, sigma=1).cpu().data
+                recovered_secret_tensor2 = recovered_secret_tensor2.view(recovered_secret_tensor2.shape[0], -1)
+                recovered_message = tensor_to_message(recovered_secret_tensor2, sigma=1).cpu().data
 
                 BER = torch.mean(torch.abs(message - recovered_message))
                 ACC = 1 - BER
 
                 print(f'[Testing {iter_idx:07d}/{args.num_iters:07d}] sigma=1 delta=50% '
-                      f'using synthesised image X_{fake_img_used_as_container} '
                       f'ACC of Msg: {ACC:.4f}; L1 loss of tensor: {tensor_recovering_loss:.4f}')
 
                 sample = torch.cat((real_img, fake_img1, fake_img2, fake_img3), 0)
@@ -458,17 +469,14 @@ def train(
                     "encoder": encoder.state_dict(),
                     "generator": generator.state_dict(),
                     "stru_generator": stru_generator.state_dict(),
-                    "extractor": extractor.state_dict(),
                     "discriminator": discriminator.state_dict(),
                     "cooccur_discriminator": cooccur_discriminator.state_dict(),
-                    "texture_discriminator": texture_discriminator.state_dict(),
-                    "structure_discriminator": structure_discriminator.state_dict(),
+                    "texture_distribution_discriminator": texture_distribution_discriminator.state_dict(),
+                    "tensor_distribution_discriminator": tensor_distribution_discriminator.state_dict(),
                     "encoder_ema": encoder_ema.state_dict(),
                     "generator_ema": generator_ema.state_dict(),
                     "stru_generator_ema": stru_generator_ema.state_dict(),
-                    "extractor_ema": extractor_ema.state_dict(),
                     "g_optim": g_optim.state_dict(),
-                    "ex_optim": ex_optim.state_dict(),
                     "d_optim": d_optim.state_dict(),
                     "args": args,
                 },
@@ -530,30 +538,27 @@ if __name__ == "__main__":
 
     args.start_iter = 0
 
-    encoder = Encoder(args.channel).to(device)
+    encoder = Encoder(args.channel, output_channel=args.N).to(device)
     generator = Generator(args.channel).to(device)
     stru_generator = StructureGenerator(args.channel, N=args.N).to(device)
-    extractor = Extractor(args.channel, N=args.N).to(device)
 
     discriminator = Discriminator(args.image_size, channel_multiplier=args.channel_multiplier).to(device)
     cooccur_discriminator = CooccurDiscriminator(args.channel).to(device)
-    texture_discriminator = DistributionDiscriminator().to(device)
-    structure_discriminator = StructureDiscriminator(args.channel).to(device)
+    texture_distribution_discriminator = DistributionDiscriminator(input_dimension=2048).to(device)
+    tensor_distribution_discriminator = DistributionDiscriminator(
+        input_dimension=args.N * (args.image_size // 16) * (args.image_size // 16)).to(device)
 
-    encoder_ema = Encoder(args.channel).to(device)
+    encoder_ema = Encoder(args.channel, output_channel=args.N).to(device)
     generator_ema = Generator(args.channel).to(device)
     stru_generator_ema = StructureGenerator(args.channel, N=args.N).to(device)
-    extractor_ema = Extractor(args.channel, N=args.N).to(device)
 
     encoder_ema.eval()
     generator_ema.eval()
     stru_generator_ema.eval()
-    extractor_ema.eval()
 
     accumulate(encoder_ema, encoder, 0)
     accumulate(generator_ema, generator, 0)
     accumulate(stru_generator_ema, stru_generator, 0)
-    accumulate(extractor_ema, extractor, 0)
 
     d_reg_ratio = args.d_reg_every / (args.d_reg_every + 1)
 
@@ -564,16 +569,11 @@ if __name__ == "__main__":
         lr=args.lr,
         betas=(0, 0.99),
     )
-    ex_optim = optim.Adam(
-        extractor.parameters(),
-        lr=args.lr,
-        betas=(0, 0.99),
-    )
     d_optim = optim.Adam(
         list(discriminator.parameters())
         + list(cooccur_discriminator.parameters())
-        + list(texture_discriminator.parameters())
-        + list(structure_discriminator.parameters()),
+        + list(texture_distribution_discriminator.parameters())
+        + list(tensor_distribution_discriminator.parameters()),
         lr=args.lr * d_reg_ratio,
         betas=(0 ** d_reg_ratio, 0.99 ** d_reg_ratio),
     )
@@ -589,20 +589,17 @@ if __name__ == "__main__":
         encoder.load_state_dict(ckpt["encoder"])
         generator.load_state_dict(ckpt["generator"])
         stru_generator.load_state_dict(ckpt["stru_generator"])
-        extractor.load_state_dict(ckpt["extractor"])
 
         discriminator.load_state_dict(ckpt["discriminator"])
         cooccur_discriminator.load_state_dict(ckpt["cooccur_discriminator"])
-        texture_discriminator.load_state_dict(ckpt["texture_discriminator"])
-        structure_discriminator.load_state_dict(ckpt["structure_discriminator"])
+        texture_distribution_discriminator.load_state_dict(ckpt["texture_distribution_discriminator"])
+        tensor_distribution_discriminator.load_state_dict(ckpt["tensor_distribution_discriminator"])
 
         encoder_ema.load_state_dict(ckpt["encoder_ema"])
         generator_ema.load_state_dict(ckpt["generator_ema"])
         stru_generator_ema.load_state_dict(ckpt["stru_generator_ema"])
-        extractor_ema.load_state_dict(ckpt["extractor_ema"])
 
         g_optim.load_state_dict(ckpt["g_optim"])
-        ex_optim.load_state_dict(ckpt["ex_optim"])
         d_optim.load_state_dict(ckpt["d_optim"])
 
     transform = transforms.Compose(
@@ -631,18 +628,15 @@ if __name__ == "__main__":
         encoder,
         generator,
         stru_generator,
-        extractor,
         discriminator,
         cooccur_discriminator,
-        texture_discriminator,
-        structure_discriminator,
+        texture_distribution_discriminator,
+        tensor_distribution_discriminator,
         g_optim,
-        ex_optim,
         d_optim,
         encoder_ema,
         generator_ema,
         stru_generator_ema,
-        extractor_ema,
         device,
         exp_name
     )
