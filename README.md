@@ -65,15 +65,15 @@ python train.py --exp_name NAME --dataset_type TYPE --dataset_path PATH --num_it
 ```    
 The training is controlled by:
 
-| args                | Description                                                                                          |
-|:--------------------|:-----------------------------------------------------------------------------------------------------|
-| `--exp_name`        | The working directory `./experiments/{exp_name}`.                                                    |
-| `--dataset_type`    | The type of dataset. Select `lmdb` for LMDB files, and `normal` for the folder storing files.        |
-| `--dataset_path`    | The path of dataset.                                                                                 |
-| `--num_iters`       | Num of training iterations.                                                                          |
-| `--N` `--lambda_Ex` | The hyper-parameters of IDEAS.                                                                       |
-| `--ckpt`            | Train from scratch if ignored, else resume training from `./experiments/NAME/checkpoints/{ckpt}.pt`. |
-| `--log_every`       | Output logs every `log_every` iterations.                                                            |
-| `--show_every`      | Save example images every `show_every` iterations under `./experiments/NAME/samples/`.                 |
-| `--save_every`      | Save models every `save_every` iterations under `./experiments/NAME/checkpoints/`.                       |
+| args            | Description                                                                                          |
+|:----------------|:-----------------------------------------------------------------------------------------------------|
+| `exp_name`      | The working directory `./experiments/{exp_name}`.                                                    |
+| `dataset_type`  | The type of dataset. Select `lmdb` for LMDB files, or `normal` for the folder storing files.         |
+| `dataset_path`  | The path of dataset.                                                                                 |
+| `num_iters`     | Num of training iterations.                                                                          |
+| `N` `lambda_Ex` | The hyper-parameters of IDEAS.                                                                       |
+| `ckpt`          | Train from scratch if ignored, else resume training from `./experiments/NAME/checkpoints/{ckpt}.pt`. |
+| `log_every`     | Output logs every `log_every` iterations.                                                            |
+| `show_every`    | Save example images every `show_every` iterations under `./experiments/NAME/samples/`.               |
+| `save_every`    | Save models every `save_every` iterations under `./experiments/NAME/checkpoints/`.                   |
 
