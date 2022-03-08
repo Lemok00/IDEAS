@@ -35,7 +35,7 @@ levels, compared to state-of-the-art SWE methods.
 
 <img src="http://latex.codecogs.com/svg.latex?N=1,&space;\sigma&space;=&space;1" title="http://latex.codecogs.com/svg.latex?N=1, \sigma = 1" />
 
-$ \sigma = 1 $
+$$\sigma = 1$$
 
 |                | LSUN Bedroom | LSUN Church | FFHQ  |
 |----------------| ---- | ---- |-------|
