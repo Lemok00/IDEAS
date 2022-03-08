@@ -52,3 +52,28 @@ IDEAS N = 2, σ = 1
 Main results of IDEAS in terms of extraction accuracy (values on the left) and FID scores (value on the right).
 
 ## Requirements
+* Only Linux is supported.
+* One high-end NVIDIA GPU with at least 11GB of memory. We have done all development and testing using a NVIDIA RTX 2080Ti.
+* Python>=3.7 and PyTorch>=1.7.0. See [https://pytorch.org/](https://pytorch.org/) for PyTorch install instructions.
+* CUDA toolkit 11.0 or later.
+* Python libraries: `pip install lmdb imutils opencv-python pandas tqdm`. We use the Anaconda3 2020.11 distribution which installs most of these by default.
+
+## Training
+Train a new model using the dataset with path of `PATH` and type of `TYPE` for `ITERS` iterations.
+```shell
+python train.py --exp_name NAME --dataset_type TYPE --dataset_path PATH --num_iters ITERS
+```    
+The training is controlled by:
+
+| args                | Description                                                                                          |
+|:--------------------|:-----------------------------------------------------------------------------------------------------|
+| `--exp_name`        | The working directory `./experiments/{exp_name}`.                                                    |
+| `--dataset_type`    | The type of dataset. Select `lmdb` for LMDB files, and `normal` for the folder storing files.        |
+| `--dataset_path`    | The path of dataset.                                                                                 |
+| `--num_iters`       | Num of training iterations.                                                                          |
+| `--N` `--lambda_Ex` | The hyper-parameters of IDEAS.                                                                       |
+| `--ckpt`            | Train from scratch if ignored, else resume training from `./experiments/NAME/checkpoints/{ckpt}.pt`. |
+| `--log_every`       | Output logs every `log_every` iterations.                                                            |
+| `--show_every`      | Save example images every `show_every` iterations under `./experiments/NAME/samples/`.                 |
+| `--save_every`      | Save models every `save_every` iterations under `./experiments/NAME/checkpoints/`.                       |
+

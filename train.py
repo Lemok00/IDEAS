@@ -60,7 +60,7 @@ def train(
         Z = torch.rand(size=(S1.shape[0], args.N, S1.shape[2], S1.shape[3]),
                        dtype=torch.float).cuda() * 2 - 1
         # Structure S2 and Texture T2
-        S2 = trainer['G_stru'](Z)
+        S2 = trainer['Gstru'](Z)
         T2 = torch.rand_like(T1) * 2 - 1
 
         # Image Synthesis
@@ -147,7 +147,7 @@ def train(
         Z = torch.rand(size=(S1.shape[0], args.N, S1.shape[2], S1.shape[3]),
                        dtype=torch.float).cuda() * 2 - 1
         # Structure S2 and Texture T2
-        S2 = trainer['G_stru'](Z)
+        S2 = trainer['Gstru'](Z)
         T2 = torch.rand_like(T1) * 2 - 1
 
         # Image Synthesis
@@ -252,7 +252,7 @@ def train(
                 S1, T1 = trainer['E_ema'](X)
                 # The secret message M
                 M = torch.randint(low=0, high=2, dtype=torch.float,
-                                  size=(S1.shape[0], args.N * S1.shape[2] * S1.shape[3])).to(device)
+                                  size=(S1.shape[0], args.N * S1.shape[2] * S1.shape[3]))
                 Z = message_to_tensor(M, sigma=1, delta=0.5).to(device)
                 Z = Z.view(shape=(S1.shape[0], args.N, S1.shape[2], S1.shape[3]))
 
@@ -280,7 +280,7 @@ def train(
                 tensor_recovering_loss = torch.mean(torch.abs(hat_Z - Z))
                 hat_Z = hat_Z.view(shape=(Z.shape[0], -1))
                 # The extracted secret message \hat_{M}
-                hat_M = tensor_to_message(hat_Z, sigma=1).to(device)
+                hat_M = tensor_to_message(hat_Z, sigma=1)
 
                 BER = torch.mean(torch.abs(M - hat_M))
                 ACC = 1 - BER
