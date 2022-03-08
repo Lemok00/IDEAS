@@ -1,1 +1,0 @@
-scp -r -P 62000 zhengwentao_8208180306@122.207.108.1:/home/zhengwentao_8208180306/yang/IDEAS/PAMI_results/generate_PAMI_samples_forRetrieve ./
