@@ -254,7 +254,7 @@ def train(
                 M = torch.randint(low=0, high=2, dtype=torch.float,
                                   size=(S1.shape[0], args.N * S1.shape[2] * S1.shape[3]))
                 Z = message_to_tensor(M, sigma=1, delta=0.5).to(device)
-                Z = Z.view(shape=(S1.shape[0], args.N, S1.shape[2], S1.shape[3]))
+                Z = Z.reshape(shape=(S1.shape[0], args.N, S1.shape[2], S1.shape[3]))
 
                 # Generate structure S2 from the secret tensor
                 S2 = trainer['Gstru_ema'](Z)
@@ -278,7 +278,7 @@ def train(
                 hat_Z = trainer['Ex_ema'](hat_S2)
 
                 tensor_recovering_loss = torch.mean(torch.abs(hat_Z - Z))
-                hat_Z = hat_Z.view(shape=(Z.shape[0], -1))
+                hat_Z = hat_Z.reshape(shape=(Z.shape[0], -1))
                 # The extracted secret message \hat_{M}
                 hat_M = tensor_to_message(hat_Z, sigma=1)
 
