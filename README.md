@@ -8,7 +8,7 @@ Xiyao Liu, Ziping Ma, Junxing Ma, Jian Zhang, Gerald Schaefer, Hui Fang
 
 This repo is the official implementation of "Image Disentanglement Autoencoder for Steganography without Embedding"
 
-#Abstract
+## Abstract
 > Conventional steganography approaches embed a secret
 message into a carrier for concealed communication but
 are prone to attack by recent advanced steganalysis tools.
@@ -31,13 +31,24 @@ performance in terms of enhanced security, reliable secret
 message extraction and flexible adaptation for different extraction
 levels, compared to state-of-the-art SWE methods.
 
-#Main Results of IDEAS
+## Main Results of IDEAS
 
-<img src="http://latex.codecogs.com/svg.latex?N=1,&space;\sigma&space;=&space;1" title="http://latex.codecogs.com/svg.latex?N=1, \sigma = 1" />
+IDEAS N = 1, σ = 1
 
-$$\sigma = 1$$
+|         | LSUN Bedroom   | LSUN Church    | FFHQ           |
+|---------|----------------|----------------|----------------|
+| Δ = 0%  | 100% / 16.88   | 100% / 15.90   | 100% / 32.88   |
+| Δ = 25% | 100% / 15.56   | 100% / 15.50   | 100% / 31.10   |
+| Δ = 50% | 99.54% / 13.39 | 99.55% / 14.48 | 99.49% / 29.31 |
 
-|                | LSUN Bedroom | LSUN Church | FFHQ  |
-|----------------| ---- | ---- |-------|
-|  | 94.01%/283.32 |
+IDEAS N = 2, σ = 1
 
+|         | LSUN Bedroom   | LSUN Church    | FFHQ           |
+|---------|----------------|----------------|----------------|
+| Δ = 0%  | 100% / 14.17   | 100% / 17.15   | 100% / 29.76   |
+| Δ = 25% | 100% / 14.01   | 100% / 16.32   | 100% / 29.02   |
+| Δ = 50% | 99.32% / 13.51 | 99.29% / 16.34 | 99.42% / 28.45 |
+
+Main results of IDEAS in terms of extraction accuracy (values on the left) and FID scores (value on the right).
+
+## Requirements
