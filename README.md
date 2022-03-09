@@ -59,11 +59,11 @@ Main results of IDEAS in terms of extraction accuracy (values on the left) and F
 * Python libraries: `pip install lmdb imutils opencv-python pandas tqdm`. We use the Anaconda3 2020.11 distribution which installs most of these by default.
 
 ## Training
-Train a new model using the dataset with path of `PATH` and type of `TYPE` for `ITERS` iterations.
+Train a model using the dataset with path of `PATH` and type of `TYPE`.
 ```shell
 python train.py --exp_name NAME --dataset_type TYPE --dataset_path PATH --num_iters ITERS
 ```    
-The training is controlled by:
+The training configuration can be customized with command line option:
 
 | args             | Description                                                                                          |
 |:-----------------|:-----------------------------------------------------------------------------------------------------|
@@ -77,3 +77,6 @@ The training is controlled by:
 | `show_every`     | Save example images every `show_every` iterations under `./experiments/NAME/samples/`.               |
 | `save_every`     | Save models every `save_every` iterations under `./experiments/NAME/checkpoints/`.                   |
 
+
+## Citation
+To be assigned.
