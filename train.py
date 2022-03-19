@@ -286,7 +286,7 @@ def train(
                 ACC = 1 - BER
 
                 print(f'[Testing {iter_idx:07d}/{args.num_iters:07d}] sigma=1 delta=50% '
-                      f'using synthesised image \hat{X}_{fake_img_used_as_container} '
+                      f'using synthesised image \hatX_{fake_img_used_as_container} '
                       f'ACC of Msg: {ACC:.4f}; L1 loss of tensor: {tensor_recovering_loss:.4f}')
 
                 sample = torch.cat((X, hat_X1, hat_X2, hat_X3), 0)
