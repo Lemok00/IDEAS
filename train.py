@@ -285,9 +285,12 @@ def train(
                 BER = torch.mean(torch.abs(M - hat_M))
                 ACC = 1 - BER
 
-                print(f'[Testing {iter_idx:07d}/{args.num_iters:07d}] sigma=1 delta=50% '
-                      f'using synthesised image \hatX_{fake_img_used_as_container} '
-                      f'ACC of Msg: {ACC:.4f}; L1 loss of tensor: {tensor_recovering_loss:.4f}')
+                log_output = f'[Testing {iter_idx:07d}/{args.num_iters:07d}] sigma=1 delta=50% ' \
+                             f'using synthesised image \hatX_{fake_img_used_as_container} ' \
+                             f'ACC of Msg: {ACC:.4f}; L1 loss of tensor: {tensor_recovering_loss:.4f}'
+                print(log_output, flush=True)
+                with open(f'{base_dir}/training_logs.txt', 'a') as fp:
+                    fp.write(f'{log_output}\n')
 
                 sample = torch.cat((X, hat_X1, hat_X2, hat_X3), 0)
 
