@@ -382,6 +382,10 @@ if __name__ == "__main__":
             fp.write(f'{k}: {v}\n')
         fp.close()
 
+    # Clear training logs
+    with open(f"{base_dir}/training_logs.txt", "wt") as fp:
+        fp.close()
+
     # Init models
     trainer = {
         'E': init_model('DisentanglementEncoder', args).to(device),

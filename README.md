@@ -52,9 +52,10 @@ IDEAS N = 2, σ = 1
 Main results of IDEAS in terms of extraction accuracy (values on the left) and FID scores (value on the right).
 
 ## Requirements
-* Only Linux is supported.
+* Only Linux is supported. 
+* Ninja >= 1.10.2, GCC/G++ >= 9.4.0.
 * One high-end NVIDIA GPU with at least 11GB of memory. We have done all development and testing using a NVIDIA RTX 2080Ti.
-* Python>=3.7 and PyTorch>=1.6.0. See [https://pytorch.org/](https://pytorch.org/) for PyTorch install instructions.
+* Python >= 3.7 and PyTorch >= 1.6.0. See [https://pytorch.org/](https://pytorch.org/) for PyTorch install instructions.
 * CUDA toolkit 10.2 or later.
 * Python libraries: `pip install lmdb imutils opencv-python pandas tqdm`. We use the Anaconda3 2020.11 distribution which installs most of these by default.
 
