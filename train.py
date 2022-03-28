@@ -306,7 +306,7 @@ def train(
 
         # Save models
         if iter_idx % args.save_every == 0:
-            trainer_ckpt = []
+            trainer_ckpt = {}
             for key in trainer.keys():
                 trainer_ckpt[key] = trainer[key].state_dict()
             torch.save(
