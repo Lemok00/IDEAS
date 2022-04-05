@@ -4,7 +4,7 @@
 
 **Image Disentanglement Autoencoder for Steganography without Embedding**
 
-Xiyao Liu, Ziping Ma, Junxing Ma, Jian Zhang, Gerald Schaefer, Hui Fang
+Xiyao Liu, [Ziping Ma](https://lemok00.github.io), Junxing Ma, Jian Zhang, Gerald Schaefer, Hui Fang
 
 This repo is the official implementation of "Image Disentanglement Autoencoder for Steganography without Embedding"
 
