@@ -6,7 +6,7 @@
 
 [Xiyao Liu](https://faculty.csu.edu.cn/liuxiyao/en/index.htm), [Ziping Ma](https://lemok00.github.io), Junxing Ma, Jian Zhang, [Gerald Schaefer](https://www.lboro.ac.uk/departments/compsci/staff/gerald-schaefer/), [Hui Fang](https://www.lboro.ac.uk/departments/compsci/staff/hui-fang/)
 
-This repo is the official implementation of "Image Disentanglement Autoencoder for Steganography without Embedding"
+This repo is the official implementation of "[Image Disentanglement Autoencoder for Steganography without Embedding](https://openaccess.thecvf.com/content/CVPR2022/html/Liu_Image_Disentanglement_Autoencoder_for_Steganography_Without_Embedding_CVPR_2022_paper.html)"
 
 ## Abstract
 > Conventional steganography approaches embed a secret
@@ -80,4 +80,12 @@ The training configuration can be customized with command line option:
 
 
 ## Citation
-To be assigned.
+```
+@inproceedings{liu2022image,
+  title={Image Disentanglement Autoencoder for Steganography Without Embedding},
+  author={Liu, Xiyao and Ma, Ziping and Ma, Junxing and Zhang, Jian and Schaefer, Gerald and Fang, Hui},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={2303--2312},
+  year={2022}
+}
+```
